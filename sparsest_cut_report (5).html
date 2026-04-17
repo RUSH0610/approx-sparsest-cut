@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sparsest Cut — A Deep Dive</title>
+<script>
+MathJax={tex:{inlineMath:[["\\(","\\)"],["$","$"]],displayMath:[["\\[","\\]"],["$$","$$"]]},options:{skipHtmlTags:["script","noscript","style","textarea","pre"]}};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0f0e0c;--paper:#f7f4ef;--cream:#ede9e0;--rust:#c04a1a;--rl:#f5e6df;--teal:#1a6b6b;--tl:#e0f0f0;--gold:#b8860b;--gl:#fdf3d0;--muted:#6b6560;--bdr:#d4cfc6;--nh:60px;}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{background:var(--paper);color:var(--ink);font-family:"DM Sans",sans-serif;font-weight:300;font-size:16px;line-height:1.76;}
+nav{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--nh);background:var(--ink);display:flex;align-items:center;padding:0 1.3rem;overflow-x:auto;border-bottom:2px solid var(--rust);}
+.brand{font-family:"Playfair Display",serif;color:var(--paper);font-size:.9rem;white-space:nowrap;margin-right:1.3rem;letter-spacing:.02em;}
+nav a{color:#a09888;text-decoration:none;font-size:.71rem;font-weight:400;letter-spacing:.07em;text-transform:uppercase;padding:0 .65rem;height:var(--nh);display:flex;align-items:center;border-bottom:2px solid transparent;white-space:nowrap;transition:color .2s,border-color .2s;}
+nav a:hover,nav a.active{color:#f7f4ef;border-bottom-color:var(--rust);}
+main{padding-top:var(--nh);}
+.hero{background:var(--ink);color:var(--paper);padding:3.8rem 2rem 3rem;position:relative;overflow:hidden;}
+.hero::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(-45deg,transparent,transparent 38px,rgba(192,74,26,.04) 38px,rgba(192,74,26,.04) 39px);}
+.hi{max-width:860px;margin:0 auto;position:relative;}
+.htag{font-size:.66rem;letter-spacing:.15em;text-transform:uppercase;color:var(--rust);font-weight:500;margin-bottom:.8rem;display:flex;align-items:center;gap:.5rem;}
+.htag::before{content:"";display:block;width:22px;height:1px;background:var(--rust);}
+h1.ht{font-family:"Playfair Display",serif;font-size:clamp(1.85rem,5vw,3.2rem);line-height:1.14;font-weight:700;margin-bottom:.85rem;}
+h1.ht em{font-style:italic;color:#c8bfa8;}
+.hsub{font-size:.96rem;color:#a09888;max-width:520px;font-weight:300;margin-bottom:1.6rem;}
+.hmeta{display:flex;gap:1.6rem;flex-wrap:wrap;font-size:.79rem;color:#7a7060;}
+section{max-width:860px;margin:0 auto;padding:3rem 2rem;border-bottom:1px solid var(--bdr);opacity:0;transform:translateY(18px);transition:opacity .5s,transform .5s;}
+section.visible{opacity:1;transform:none;}
+h2.st{font-family:"Playfair Display",serif;font-size:1.75rem;font-weight:700;margin-bottom:1.4rem;display:flex;align-items:center;gap:.85rem;}
+.sn{font-family:"JetBrains Mono",monospace;font-size:.7rem;color:var(--rust);background:var(--rl);padding:3px 8px;border-radius:3px;font-weight:500;}
+h3{font-family:"Playfair Display",serif;font-size:1.15rem;font-weight:700;margin:1.7rem 0 .65rem;color:var(--teal);}
+p{margin-bottom:.9rem;}
+.cl{border-radius:6px;padding:.95rem 1.15rem;margin:1.2rem 0;}
+.cl.def{background:var(--tl);border-left:3px solid var(--teal);}
+.cl.thm{background:var(--rl);border-left:3px solid var(--rust);}
+.cl.nt{background:var(--gl);border-left:3px solid var(--gold);}
+.cl.pf{background:var(--cream);border-left:3px solid var(--bdr);}
+.clb{font-size:.65rem;letter-spacing:.12em;text-transform:uppercase;font-weight:500;margin-bottom:.38rem;}
+.cl.def .clb{color:var(--teal);}.cl.thm .clb{color:var(--rust);}.cl.nt .clb{color:var(--gold);}.cl.pf .clb{color:var(--muted);}
+.qed{text-align:right;color:var(--muted);font-size:.95rem;margin-top:.3rem;}
+.ab{background:var(--cream);border:1px solid var(--bdr);border-radius:8px;margin:1.2rem 0;overflow:hidden;}
+.ah{background:var(--ink);color:var(--paper);padding:.58rem .95rem;font-family:"JetBrains Mono",monospace;font-size:.74rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.38rem;}
+.cx{font-size:.65rem;color:#a09888;}
+.as{padding:.85rem 1rem;list-style:none;counter-reset:s;}
+.as li{counter-increment:s;display:flex;gap:.85rem;padding:.48rem 0;border-bottom:1px solid var(--bdr);font-size:.88rem;align-items:flex-start;}
+.as li:last-child{border-bottom:none;}
+.as li::before{content:counter(s);min-width:20px;height:20px;background:var(--rust);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.67rem;font-weight:500;font-family:"JetBrains Mono",monospace;margin-top:2px;flex-shrink:0;}
+.dc{background:var(--cream);border:1px solid var(--bdr);border-radius:10px;padding:1.2rem;margin:1.6rem 0;}
+.dt{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:.75rem;font-weight:500;}
+canvas{display:block;width:100%;background:white;border-radius:6px;border:1px solid var(--bdr);}
+.btns{display:flex;flex-wrap:wrap;gap:.48rem;margin-top:.75rem;}
+.btn{background:var(--ink);color:var(--paper);border:none;border-radius:4px;padding:.38rem .82rem;font-family:"DM Sans",sans-serif;font-size:.77rem;cursor:pointer;transition:background .15s;}
+.btn:hover{background:var(--rust);}
+.btn.ol{background:transparent;color:var(--ink);border:1px solid var(--bdr);}
+.btn.ol:hover{background:var(--cream);border-color:var(--ink);}
+.di{margin-top:.6rem;font-size:.76rem;color:var(--muted);font-family:"JetBrains Mono",monospace;min-height:1.1rem;}
+.fcd{background:white;border:1px solid var(--bdr);border-radius:8px;padding:1.1rem;margin:1.2rem 0;}
+.fr{display:flex;gap:.85rem;align-items:center;margin-bottom:.6rem;flex-wrap:wrap;}
+.fl{font-size:.77rem;color:var(--muted);min-width:110px;}
+input[type=range]{flex:1;min-width:90px;accent-color:var(--rust);}
+.fv{font-family:"JetBrains Mono",monospace;font-size:.84rem;font-weight:500;min-width:44px;text-align:right;color:var(--rust);}
+.fres{background:var(--cream);border-radius:6px;padding:.8rem;font-family:"JetBrains Mono",monospace;font-size:.77rem;margin-top:.6rem;white-space:pre;line-height:2;}
+.ct{width:100%;border-collapse:collapse;font-size:.82rem;margin:1.2rem 0;}
+.ct th{background:var(--ink);color:var(--paper);padding:.58rem .82rem;text-align:left;font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.06em;font-weight:500;}
+.ct td{padding:.58rem .82rem;border-bottom:1px solid var(--bdr);}
+.ct tr:nth-child(even) td{background:var(--cream);}
+.best{color:var(--teal);font-weight:500;}
+.tag{display:inline-block;padding:2px 7px;border-radius:3px;font-size:.65rem;font-family:"JetBrains Mono",monospace;}
+.tl{background:var(--rl);color:var(--rust);}.ts{background:var(--tl);color:var(--teal);}.tb{background:var(--gl);color:var(--gold);}
+.br{margin:.65rem 0;}.bl{font-size:.77rem;margin-bottom:.24rem;display:flex;justify-content:space-between;}
+.bt{height:7px;background:var(--bdr);border-radius:4px;overflow:hidden;}
+.bf{height:100%;border-radius:4px;transition:width 1.2s ease;}
+.fr2{background:var(--rust);}.ft2{background:var(--teal);}.fg2{background:var(--gold);}
+.tln{position:relative;padding-left:1.8rem;}
+.tln::before{content:"";position:absolute;left:7px;top:0;bottom:0;width:2px;background:var(--bdr);}
+.ti{position:relative;margin-bottom:1.6rem;}
+.td{position:absolute;left:-1.8rem;top:5px;width:13px;height:13px;border-radius:50%;background:var(--paper);border:2px solid var(--rust);}
+.td.hl{border-color:var(--teal);background:var(--tl);}
+.ty{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--rust);font-weight:500;margin-bottom:.2rem;}
+.tc{font-size:.87rem;}
+.cg{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.85rem;margin:1.2rem 0;}
+.cc{background:white;border:1px solid var(--bdr);border-radius:8px;padding:.95rem;}
+.ca{width:38px;height:38px;border-radius:50%;background:var(--rl);color:var(--rust);display:flex;align-items:center;justify-content:center;font-weight:500;font-size:.84rem;margin-bottom:.62rem;}
+.cn{font-weight:500;font-size:.89rem;margin-bottom:.2rem;}
+.cr{font-size:.72rem;color:var(--muted);margin-bottom:.42rem;}
+.ctags{display:flex;flex-wrap:wrap;gap:.26rem;}
+.ctag{font-size:.62rem;padding:2px 7px;border-radius:10px;background:var(--cream);color:var(--muted);border:1px solid var(--bdr);}
+.rl{list-style:none;counter-reset:r;}
+.rl li{counter-increment:r;display:flex;gap:.65rem;padding:.48rem 0;border-bottom:1px solid var(--bdr);font-size:.82rem;}
+.rl li::before{content:"[" counter(r) "]";font-family:"JetBrains Mono",monospace;font-size:.68rem;color:var(--rust);font-weight:500;min-width:27px;margin-top:2px;}
+code{font-family:"JetBrains Mono",monospace;font-size:.82em;background:var(--cream);padding:1px 5px;border-radius:3px;color:var(--rust);}
+ul.bl2{margin:.62rem 0 .85rem 1.25rem;line-height:2.1;}
+#bt{position:fixed;bottom:1.7rem;right:1.7rem;background:var(--rust);color:white;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.95rem;cursor:pointer;border:none;opacity:0;transition:opacity .3s;}
+#bt.show{opacity:1;}
+@media(max-width:580px){.brand{display:none;}h1.ht{font-size:1.75rem;}section{padding:2rem .9rem;}}
+</style>
+</head>
+<body>
+<nav id="nb">
+  <span class="brand">Sparsest Cut</span>
+  <a href="#intro">Intro</a><a href="#formulation">Formulation</a><a href="#example">Example</a>
+  <a href="#algo1">LP+&#8467;&#8321;</a><a href="#algo1b">Multicut</a><a href="#algo2">ARV SDP</a>
+  <a href="#balsep">Bal. Sep.</a><a href="#proofs">Proofs</a><a href="#gap">Open Problems</a>
+  <a href="#sim">Simulation</a><a href="#conclusion">Conclusion</a>
+  <a href="#contrib">Contributions</a><a href="#refs">References</a>
+</nav>
+<div class="hero">
+  <div class="hi">
+    <div class="htag">Graph Algorithms &amp; Approximation Theory</div>
+    <h1 class="ht">The Sparsest Cut Problem<br><em>Flows, Metrics &amp; Embeddings</em></h1>
+    <p class="hsub">A self-contained deep dive into one of the most fundamental problems in combinatorial optimization &mdash; finding the &ldquo;best bang-per-buck&rdquo; cut in a capacitated graph.</p>
+    <div class="hmeta">
+      <span>&#9632; Best ratio: \(O(\sqrt{\log n})\) [ARV 2004]</span>
+      <span>&#9632; Flow-cut gap: \(\Theta(\log k)\)</span>
+    </div>
+  </div>
+</div>
+<main>
+
+<section id="intro">
+<h2 class="st"><span class="sn">&sect;1</span> Introduction &amp; Motivation</h2>
+<p>Imagine you manage a data-center network. Thousands of servers communicate over high-capacity links, and you need to identify the &ldquo;weakest link&rdquo; &mdash; a small set of connections whose removal would most severely disrupt communication <em>relative</em> to how much traffic was severed. You want to minimize the ratio of capacity removed to traffic disrupted. That ratio is the <strong>sparsity</strong> of a cut, and finding its minimum is the Sparsest Cut problem.</p>
+<p>This seemingly simple ratio objective is extraordinarily rich, sitting at the intersection of LP duality, metric geometry, spectral graph theory, and semidefinite programming.</p>
+<h3>Application 1 &mdash; Balanced Graph Separator</h3>
+<p>The most direct application is finding a <strong>balanced separator</strong>: a small set of edges whose removal splits \(G\) into two roughly equal halves. Define the <em>balanced sparsity</em>:</p>
+\[\phi_b(G)=\min_{\substack{S\subseteq V\\n/3\le|S|\le 2n/3}}\frac{|\delta(S)|}{|S|\cdot|V\setminus S|}\]
+<p>One can show \(\phi^*(G)\le\phi_b(G)\le\tfrac{9}{2}\phi^*(G)\). An \(\alpha\)-approximation to Sparsest Cut yields a \(2\alpha\)-approximation to balanced separator. Balanced separators enable divide-and-conquer on graphs, giving efficient algorithms for many NP-hard problems (see &sect;5b).</p>
+<h3>Application 2 &mdash; Certifying Expanders</h3>
+<p>A graph \(G\) is an \(\alpha\)-<strong>expander</strong> if every \(S\) with \(|S|\le|V|/2\) satisfies \(|\delta(S)|/|S|\ge\alpha\), i.e., \(\phi(G)\ge\alpha\). Checking expansion is co-NP-hard, but an \(\alpha\)-approximation to Sparsest Cut certifies expansion within factor \(\alpha\). The quantitative relationship with the Cheeger constant \(h(G)=\min_{|S|\le n/2}|\delta(S)|/|S|\) is:</p>
+\[\frac{\phi(G)}{2}\;\le\; h(G)\;\le\;\phi(G)\]
+<h3>Application 3 &mdash; Treewidth Approximation</h3>
+<p>The <strong>treewidth</strong> \(\text{tw}(G)\) (NP-hard to compute) is approximable via node-capacitated Sparsest Cut. With vertex-separator sparsity \(\phi_{\mathrm{sep}}\):</p>
+\[\phi_{\mathrm{sep}}(G)\le\text{tw}(G)+1\le O\!\left(\phi_{\mathrm{sep}}(G)\log n\right)\]
+<p>The \(O(\sqrt{\log n})\) node-capacitated Sparsest Cut approximation (Feige-Hajiaghayi-Lee 2005) gives \(\text{tw}(G)\le O(\phi_{\mathrm{sep}}^*(G)\cdot\sqrt{\log n})\), the best known polynomial-time treewidth approximation.</p>
+<h3>Application 4 &mdash; Image Segmentation (Normalized Cut)</h3>
+<p>Pixels become vertices in a similarity-weighted graph \(G=(V,E,w)\). The Normalized Cut (Shi-Malik 2000) is Uniform Sparsest Cut. The spectral relaxation uses the normalized Laplacian \(L=D^{-1/2}(D-W)D^{-1/2}\) with Cheeger's inequality:</p>
+\[\frac{\lambda_2}{2}\;\le\;\phi(G)\;\le\;\sqrt{2\lambda_2}\]
+<p>giving a \(O(\sqrt{\phi^*})\)-approximation via spectral methods &mdash; an explicit quantitative connection to Sparsest Cut.</p>
+<div class="cl nt"><div class="clb">Why is this hard?</div>
+<p style="margin:0">The objective \(\phi(S)=c(\delta(S))/\mathrm{Dem}(\delta(S))\) is a ratio of two linear functions &mdash; non-linear and non-convex. NP-hard. Best known ratio: \(O(\sqrt{\log n})\) via SDP (ARV 2004). Whether \(O(1)\) is achievable remains open.</p></div>
+</section>
+
+<section id="formulation">
+<h2 class="st"><span class="sn">&sect;2</span> Mathematical Formulation</h2>
+<h3>Non-Uniform Sparsest Cut</h3>
+<p>Input: supply graph \(G=(V,E)\), capacities \(c:E\to\mathbb{R}_+\), demand pairs \((s_1,t_1),\ldots,(s_k,t_k)\), demands \(D_1,\ldots,D_k\ge 0\).</p>
+\[\phi(S)=\frac{c(\delta(S))}{\displaystyle\sum_{i:\,S\text{ separates }(s_i,t_i)}D_i}\qquad\text{Goal: }\min_{\emptyset\ne S\ne V}\phi(S)\]
+<h3>Uniform Sparsest Cut</h3>
+<p>When \(D_i=1\) for every pair \((u,v)\) in the complete demand graph:</p>
+\[\phi_U(S)=\frac{c(\delta(S))}{|S|\cdot|V\setminus S|}\]
+<p>For \(|S|\le n/2\): \(\tfrac{1}{n}\cdot\tfrac{|\delta(S)|}{|S|}\le\tfrac{|\delta(S)|}{|S||V\setminus S|}\le\tfrac{2}{n}\cdot\tfrac{|\delta(S)|}{|S|}\), so expansion and Uniform Sparsest Cut differ by at most 2.</p>
+<h3>LP Relaxation &amp; Dual</h3>
+\[\begin{array}{rll}\min&\displaystyle\sum_{uv\in E}c(uv)\,d(uv)\\[4pt]\text{s.t.}&\displaystyle\sum_{i=1}^k D_i\,d(s_i,t_i)=1&\text{(normalize)}\\[4pt]&d(u,v)\le d(u,w)+d(w,v)&\forall\,u,v,w\\[3pt]&d(u,v)=d(v,u)\ge 0\end{array}\qquad\text{(Dual: }\max\lambda\text{, Max Concurrent Flow)}\]
+<div class="cl def"><div class="clb">Definition &mdash; Flow-Cut Gap</div>
+<p style="margin:0">The <strong>flow-cut gap</strong> is \(\min_S\phi(S)/\lambda^*\) where \(\lambda^*\) is the max concurrent flow. LP duality: \(\lambda^*\le\min_S\phi(S)\) always. General undirected graphs: gap \(=\Theta(\log k)\).</p></div>
+<h3>Variants</h3>
+<table class="ct"><tr><th>Variant</th><th>Demand graph</th><th>Best approx.</th><th>Method</th></tr>
+<tr><td>Uniform Sparsest Cut</td><td>Complete, unit</td><td class="best">\(O(\sqrt{\log n})\)</td><td><span class="tag ts">SDP</span></td></tr>
+<tr><td>Non-Uniform Sparsest Cut</td><td>Arbitrary pairs</td><td class="best">\(O(\sqrt{\log n\log\log n})\)</td><td><span class="tag ts">SDP</span></td></tr>
+<tr><td>Planar graphs</td><td>Arbitrary</td><td class="best">\(O(\sqrt{\log n})\)</td><td><span class="tag tl">LP+&#8467;&#8321;</span></td></tr>
+<tr><td>Series-parallel</td><td>Arbitrary</td><td class="best">2 (tight)</td><td><span class="tag tb">Exact</span></td></tr>
+<tr><td>Tree metric</td><td>Arbitrary</td><td class="best">1 (exact)</td><td><span class="tag tb">LP tight</span></td></tr>
+</table>
+</section>
+
+<section id="example">
+<h2 class="st"><span class="sn">&sect;3</span> A Worked Example</h2>
+<p>The 6-node graph below has solid supply edges (labeled with capacity) and dashed demand pairs. Click any node to toggle it into cut set \(S\) and watch the sparsity update live.</p>
+<div class="dc"><div class="dt">Interactive &mdash; click nodes to build cut set S</div>
+<canvas id="gc" height="290"></canvas>
+<div class="btns">
+<button class="btn" onclick="resetCut()">Reset</button>
+<button class="btn ol" onclick="showOptCut()">Show Optimal Cut</button>
+<button class="btn ol" onclick="showBadCut()">Single-Node Cut</button>
+</div><div class="di" id="gdi">Click nodes to add them to cut set S (orange).</div></div>
+<h3>Trace</h3>
+<p>Optimal cut \(S=\{A,B,D\}\): crossing edges \((A,C),(B,C),(B,E),(D,E)\) give \(c(\delta(S))=9\). Separated demand pairs \((A,C),(A,F),(B,C),(B,F),(D,F)\) give \(\mathrm{Dem}=7\). Sparsity \(=9/7\approx1.286\).</p>
+<p>Single node \(A\): capacity \(7\), demand \(3\), sparsity \(\approx2.33\) &mdash; much worse because it separates little demand per unit capacity.</p>
+<div class="cl nt"><div class="clb">Key Insight</div><p style="margin:0">Sparsest cut minimizes the <em>ratio</em> capacity/demand, not absolute cost. A cut separating many high-demand pairs cheaply achieves low sparsity even if it is not the minimum cut.</p></div>
+<h3>Flow-Cut Gap Explorer</h3>
+<div class="fcd">
+<div class="dt" style="font-size:.72rem;margin-bottom:.75rem;">Flow-Cut Gap Explorer</div>
+<div class="fr"><span class="fl">\(c(\delta S)\)</span><input type="range" id="cap" min="1" max="20" value="8" oninput="updFC()"><span class="fv" id="cv">8</span></div>
+<div class="fr"><span class="fl">Demand separated</span><input type="range" id="dem" min="1" max="20" value="5" oninput="updFC()"><span class="fv" id="dv">5</span></div>
+<div class="fr"><span class="fl">Concurrent flow \(\lambda^*\)%</span><input type="range" id="flw" min="5" max="100" value="60" oninput="updFC()"><span class="fv" id="fv">0.60</span></div>
+<div class="fres" id="fres"></div>
+</div>
+</section>
+
+<section id="algo1">
+<h2 class="st"><span class="sn">&sect;4</span> Rounding I &mdash; Leighton-Rao via &#8467;&#8321; Embeddings</h2>
+<p>Leighton-Rao (1988), reinterpreted by Linial-London-Rabinovich (1994) and Aumann-Rabani (1998), achieves an \(O(\log k)\) approximation. Two phases: solve an LP to get a fractional metric, then round via &#8467;&#8321; embedding and cut-metric decomposition.</p>
+<h3>Phase 1 &mdash; The LP Relaxation</h3>
+\[\begin{array}{rll}\min&\displaystyle\sum_{uv\in E}c(uv)\,d(uv)\\[4pt]\text{s.t.}&\displaystyle\sum_{i=1}^k D_i\,d(s_i,t_i)=1,\quad d\text{ is a semi-metric on }V,\quad d\ge 0\end{array}\]
+<p>Solvable in poly time. \(\mathrm{OPT}_{\mathrm{LP}}\le\mathrm{OPT}_{\mathrm{INT}}\) because any integer cut \(S\) with sparsity \(\lambda\) gives feasible solution \(d=d_S/Z\), \(Z=\sum_i D_i d_S(s_i,t_i)\), with LP value \(=\lambda\).</p>
+<h3 id="cutmetric">Phase 2a &mdash; Cut Metrics and the &#8467;&#8321; Characterization</h3>
+<div class="cl def"><div class="clb">Definition &mdash; Cut Semi-Metric</div>
+<p>Given \(V\) and \(S\subseteq V\), the <strong>cut semi-metric</strong> \(d_S\) induced by \(S\) is:</p>
+\[d_S(u,v)=\begin{cases}1&\text{if }|S\cap\{u,v\}|=1\quad(u,v\text{ on opposite sides})\\0&\text{otherwise}\end{cases}\]
+<p style="margin:.35rem 0 0">\(d_S\) is an &#8467;&#8321; metric in \(\mathbb{R}^1\). Explicit embedding: \(f(u)=0\) if \(u\in S\), \(f(u)=1\) if \(u\notin S\), giving \(|f(u)-f(v)|=d_S(u,v)\).</p>
+</div>
+<div class="cl thm"><div class="clb">Theorem &mdash; &#8467;&#8321; = Cut Cone</div>
+<p>A metric \((V,d)\) is isometrically embeddable in &#8467;&#8321; (any dimension) <em>if and only if</em> there exists \(\lambda:2^V\to\mathbb{R}_+\) such that</p>
+\[d(u,v)=\sum_{S\subseteq V}\lambda(S)\,d_S(u,v)\qquad\forall\,u,v\in V\]
+</div>
+<div class="cl pf"><div class="clb">Proof (&lArr;) &mdash; Cut cone embeds into &#8467;&#8321;</div>
+<p>Suppose \(d(u,v)=\sum_S\lambda(S)d_S(u,v)\). Let \(S_1,\ldots,S_h\) be the sets with \(\lambda(S_j)>0\). Embed \(V\to\mathbb{R}^h\) by:</p>
+\[f(u)=\bigl(\lambda(S_1)\,\mathbf{1}_{S_1^c}(u),\;\lambda(S_2)\,\mathbf{1}_{S_2^c}(u),\;\ldots,\;\lambda(S_h)\,\mathbf{1}_{S_h^c}(u)\bigr)\]
+<p>where \(\mathbf{1}_{S^c}(u)=0\) if \(u\in S\), else \(1\). Then:</p>
+\[\|f(u)-f(v)\|_1=\sum_{j=1}^h\lambda(S_j)|\mathbf{1}_{S_j^c}(u)-\mathbf{1}_{S_j^c}(v)|=\sum_{j=1}^h\lambda(S_j)d_{S_j}(u,v)=d(u,v)\]
+<div class="qed">&#9632;</div></div>
+<div class="cl pf"><div class="clb">Proof (&rArr;) &mdash; &#8467;&#8321; embedding gives cut-cone decomposition</div>
+<p>Suppose \(f:V\to\mathbb{R}^h\) with \(d(u,v)=\|f(u)-f(v)\|_1=\sum_i|u(i)-v(i)|\). Define line metric \(d_i(u,v)=|u(i)-v(i)|\). It suffices to show each \(d_i\) is in the cut cone.</p>
+<p><strong>Decomposing a line metric.</strong> Sort vertices: \(v_1(i)\le v_2(i)\le\cdots\le v_n(i)\). For \(j=1,\ldots,n-1\) define:</p>
+\[S_j=\{v_1,v_2,\ldots,v_j\},\qquad\lambda_i(S_j)=v_{j+1}(i)-v_j(i)\ge 0\]
+<p>and \(\lambda_i(S)=0\) for \(S\notin\{S_1,\ldots,S_{n-1}\}\). For any \(v_a,v_b\) with \(a&lt;b\):</p>
+\[\sum_S\lambda_i(S)\,d_S(v_a,v_b)=\sum_{j=a}^{b-1}\lambda_i(S_j)\cdot 1=\sum_{j=a}^{b-1}(v_{j+1}(i)-v_j(i))=v_b(i)-v_a(i)=d_i(v_a,v_b)\]
+<p>\(d_{S_j}(v_a,v_b)=1\) exactly when \(a\le j&lt;b\) (prefix \(S_j\) separates \(v_a\) from \(v_b\) iff \(a\le j&lt;b\)). The sum telescopes to the coordinate difference.</p>
+<div class="qed">&#9632;</div></div>
+
+<div class="dc"><div class="dt">Interactive &mdash; Line metric &rarr; prefix-cut decomposition (click Next)</div>
+<canvas id="cmc" height="250"></canvas>
+<div class="btns">
+<button class="btn" onclick="cmS(-1)">&#8592; Prev</button>
+<button class="btn" onclick="cmS(1)">Next &#8594;</button>
+<button class="btn ol" onclick="cmRst()">Reset</button>
+</div>
+<div style="margin-top:.7rem;background:white;border:1px solid var(--bdr);border-radius:6px;padding:.8rem;">
+<div style="font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:.32rem;font-weight:500;">What is happening</div>
+<div id="cme" style="font-size:.84rem;line-height:1.68;min-height:2.5rem;"></div>
+</div></div>
+
+<h3>Phase 2b &mdash; Bourgain&rsquo;s Embedding</h3>
+<div class="cl thm"><div class="clb">Theorem &mdash; Bourgain (1985)</div>
+<p>For any \(n\)-point metric \((V,d)\) and \(k\) terminal pairs, there is a randomized poly-time contraction \(f:V\to\mathbb{R}^d\) (&#8467;&#8321;, \(d=O(\log^2 n)\)) with:</p>
+\[\|f(u)-f(v)\|_1\le d(u,v)\;\forall\,u,v\qquad\text{and}\qquad\|f(s_i)-f(t_i)\|_1\ge\frac{d(s_i,t_i)}{O(\log k)}\]
+<p style="margin:0"><strong>Construction:</strong> For scale \(r\) and repetition \(j\), pick random \(A_{r,j}\) (each vertex w.p. \(2^{-r}/n\)). Fréchet coord \(f_{r,j}(v)=d(v,A_{r,j})\). Pairs at distance \(\sim 2^r\) are separated by scale-\(r\) coords.</p>
+</div>
+<h3>Complete LLR/AR Algorithm</h3>
+<div class="ab"><div class="ah"><span>SparseCutViaL1Embedding &mdash; Linial-London-Rabinovich / Aumann-Rabani</span><span class="cx">Randomized \(O(\mathrm{poly}(n,k))\)</span></div>
+<ol class="as">
+<li><strong>Solve LP:</strong> Obtain \(d^*\) on \(V\), value \(\mathrm{OPT}_{\mathrm{LP}}\).</li>
+<li><strong>Embed into &#8467;&#8321;:</strong> Apply Bourgain to get contraction \(f:V\to\mathbb{R}^d\) (\(d=O(\log^2 n)\)) with distortion \(\alpha=O(\log k)\) on terminals.</li>
+<li><strong>Extract cuts:</strong> For each dimension \(i=1,\ldots,d\): sort vertices by coord \(i\), giving \(v_{\pi(1)},\ldots,v_{\pi(n)}\). For each prefix \(h\): cut \(S_{i,h}=\{v_{\pi(1)},\ldots,v_{\pi(h)}\}\).</li>
+<li><strong>Return best:</strong> Among all \(O(dn)\) cuts, return minimum sparsity.</li>
+</ol></div>
+<h3>Approximation Analysis</h3>
+<p>Let \(d_{\ell_1}=\sum_S z_S d_S\) (cut-cone decomp.), \(A=\sum_{uv}c(uv)d^*(uv)\), \(B=\sum_i D_i d^*(s_i,t_i)=1\):</p>
+\[A\ge\sum_{uv}c(uv)\sum_S z_S d_S(uv)=\sum_S z_S c(\delta(S))\]
+\[B\le\alpha\sum_S z_S\,\mathrm{Dem}(\delta(S))\]
+\[\mathrm{OPT}_{\mathrm{LP}}=\frac{A}{B}\ge\frac{1}{\alpha}\min_S\frac{c(\delta(S))}{\mathrm{Dem}(\delta(S))}\quad\Rightarrow\quad\boxed{\min_S\phi(S)\le O(\log k)\cdot\mathrm{OPT}_{\mathrm{INT}}}\]
+<div class="dc"><div class="dt">Interactive &mdash; &#8467;&#8321; prefix cut walkthrough</div>
+<canvas id="lrc" height="280"></canvas>
+<div class="btns">
+<button class="btn" id="lrp" onclick="lrS(-1)">&#8592; Prev</button>
+<button class="btn" id="lrn" onclick="lrS(1)">Next &#8594;</button>
+<button class="btn ol" onclick="lrRst()">Reset</button>
+<button class="btn ol" onclick="lrNew()">New Graph</button>
+</div>
+<div style="margin-top:.7rem;background:white;border:1px solid var(--bdr);border-radius:6px;padding:.8rem;">
+<div style="font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:.32rem;font-weight:500;">Step explanation</div>
+<div id="lre" style="font-size:.84rem;line-height:1.68;min-height:2.8rem;"></div>
+</div>
+<div class="di" id="lri"></div></div>
+</section>
+
+<section id="algo1b">
+<h2 class="st"><span class="sn">&sect;4b</span> Rounding II &mdash; Multicut Reduction &amp; Group Lemma</h2>
+<p>Before the &#8467;&#8321; embedding framework, rounding went via <strong>Minimum Multicut</strong>: find the minimum-cost edge set disconnecting all \(k\) pairs. NP-hard, but admits \(O(\log k)\)-approximation (Garg-Vazirani-Yannakakis 1996). If we knew <em>which</em> pairs the optimal sparse cut separates, we could run the Multicut algorithm on just those pairs. The Group Lemma identifies them.</p>
+<h3>The Group Lemma</h3>
+<div class="cl thm"><div class="clb">Group Lemma (Claim 3)</div>
+<p>Let \(d_{\max}=\max_i d_i\). For \(\ell\ge 0\): \(A_\ell=\{i\mid d_{\max}/2^{\ell+1}&lt;d_i\le d_{\max}/2^\ell\}\). Then \(\exists\,h\le 2\log D\) (\(D=\sum_i D_i\)) such that</p>
+\[\mathrm{dem}(A_h)\cdot\frac{d_{\max}}{2^{h+1}}\ge\frac{1}{8\log D},\qquad\mathrm{dem}(A_h)=\sum_{i\in A_h}D_i\]
+</div>
+<div class="cl pf"><div class="clb">Proof &mdash; step by step</div>
+<p><strong>1.</strong> \(\sum_i D_i d_i=1\). Groups partition all pairs: \(1=\sum_{\ell\ge0}\sum_{i\in A_\ell}D_i d_i\).</p>
+<p><strong>2.</strong> Set \(t=2\log D-1\). For \(\ell&gt;t\): \(\sum_{i\in A_\ell}D_i d_i\le D/2^\ell\le 2/D\). Summing: \(\sum_{\ell&gt;t}\sum_{i\in A_\ell}D_i d_i\le 1/4\) (for \(D\ge 8\)).</p>
+<p><strong>3.</strong> \(\sum_{\ell\le t}\sum_{i\in A_\ell}D_i d_i\ge 3/4\).</p>
+<p><strong>4.</strong> Since \(d_i&lt;d_{\max}/2^\ell\) for \(i\in A_\ell\): \(\sum_{\ell\le t}\mathrm{dem}(A_\ell)\cdot d_{\max}/2^{\ell+1}&gt;3/8&gt;1/4\).</p>
+<p><strong>5.</strong> There are \(2\log D\) terms; by averaging one satisfies \(\mathrm{dem}(A_h)\cdot d_{\max}/2^{h+1}\ge 1/(8\log D)\). \(\square\)</p>
+</div>
+<div class="cl pf"><div class="clb">Claim &mdash; Rescaled metric is Multicut-feasible</div>
+<p>Set \(\alpha=2^{h+1}/d_{\max}\), \(\ell'(e)=\min(1,\alpha d^*(e))\). For \(i\in A_h\) and path \(p\) from \(s_i\) to \(t_i\):</p>
+\[\sum_{e\in p}\ell'(e)\ge\alpha\sum_{e\in p}d^*(e)\ge\alpha\,d^*(s_i,t_i)&gt;\alpha\cdot\frac{d_{\max}}{2^{h+1}}=1\]
+<p style="margin:.3rem 0 0">Cost: \(\sum_e c(e)\ell'(e)\le\alpha\cdot\mathrm{OPT}_{\mathrm{LP}}\).</p><div class="qed">&#9632;</div>
+</div>
+<h3>Complete Multicut Algorithm</h3>
+<div class="ab"><div class="ah"><span>SparseCutViaMulticut &mdash; \(O(\log k\cdot\log D)\) approx.</span><span class="cx">\(O(\mathrm{poly}(n,k))\) + \(O(\log k)\) Multicut oracle</span></div>
+<ol class="as">
+<li><strong>Solve LP:</strong> Get \(d^*\), compute \(d_i=d^*(s_i,t_i)\), \(d_{\max}=\max_i d_i\).</li>
+<li><strong>Build groups:</strong> For \(\ell=0,\ldots,2\log D\): compute \(A_\ell\) and \(\mathrm{dem}(A_\ell)\).</li>
+<li><strong>Heavy group:</strong> Find \(h\) maximizing \(\mathrm{dem}(A_h)\cdot d_{\max}/2^{h+1}\ge 1/(8\log D)\).</li>
+<li><strong>Rescale:</strong> \(\alpha=2^{h+1}/d_{\max}\), \(\ell'(e)=\min(1,\alpha d^*(e))\). Feasible Multicut LP for pairs \(A_h\).</li>
+<li><strong>Round Multicut:</strong> \(O(\log k)\) rounding &rarr; cut \(E'\) with \(c(E')=O(\log k)\cdot\alpha\cdot\mathrm{OPT}_{\mathrm{LP}}\).</li>
+<li><strong>Return</strong> the cut induced by \(E'\).</li>
+</ol></div>
+<h3>Ratio</h3>
+\[\phi(E')\le\frac{O(\log k)\cdot\alpha\cdot\mathrm{OPT}_{\mathrm{LP}}}{\alpha/(8\log D)}=O(\log k\cdot\log D)\cdot\mathrm{OPT}_{\mathrm{INT}}\quad\Rightarrow\quad\boxed{O(\log^2 k)\cdot\mathrm{OPT}\text{ for unit demands}}\]
+<div class="dc"><div class="dt">Interactive &mdash; Group Lemma: pairs grouped by LP distance</div>
+<canvas id="glc" height="310"></canvas>
+<div class="btns">
+<button class="btn" onclick="glRun()">&#9654; Animate Grouping</button>
+<button class="btn ol" onclick="glRst()">Reset</button>
+<button class="btn ol" onclick="glNew()">New Instance</button>
+</div>
+<div class="di" id="gli">Click &ldquo;Animate Grouping&rdquo; to watch pairs sorted by \(d_i\) into dyadic groups \(A_\ell\).</div></div>
+<table class="ct" style="margin-top:1rem;">
+<tr><th>Property</th><th>Multicut Reduction</th><th>&#8467;&#8321; Embedding (LLR/AR)</th></tr>
+<tr><td>Approximation ratio</td><td>\(O(\log^2 k)\)</td><td class="best">\(O(\log k)\)</td></tr>
+<tr><td>Key ingredient</td><td>Group Lemma + Multicut alg.</td><td>Bourgain&rsquo;s embedding</td></tr>
+<tr><td>Conceptual clarity</td><td class="best">More direct</td><td>Requires metric geometry</td></tr>
+<tr><td>Historical role</td><td>First complete rounding</td><td>Optimal LP rounding</td></tr>
+</table>
+</section>
+
+<section id="algo2">
+<h2 class="st"><span class="sn">&sect;5</span> The \(O(\sqrt{\log n})\) ARV Algorithm</h2>
+<p>Arora, Rao, and Vazirani (2004) broke the \(O(\log n)\) barrier: <strong>\(O(\sqrt{\log n})\)-approximation</strong> for Uniform Sparsest Cut via SDP. Currently the best known result.</p>
+<h3>The &#8467;&#8322;&#178; SDP Relaxation</h3>
+<p>Assign unit vectors \(v_u\in\mathbb{R}^n\) to each vertex. Squared distances \(\|v_i-v_j\|^2\) play the role of distances. The &#8467;&#8322;&#178; triangle inequality (all angles acute, \(\langle v_i,v_j\rangle\ge 0\)) is a semidefinite constraint.</p>
+\[\begin{array}{rll}\min&\displaystyle\sum_{ij\in E}\|v_i-v_j\|^2\\[4pt]\text{s.t.}&\displaystyle\sum_{i,j}\|v_i-v_j\|^2=n^2,\quad\|v_i-v_j\|^2+\|v_j-v_k\|^2\ge\|v_i-v_k\|^2\;\forall\,i,j,k,\quad\|v_u\|=1\;\forall\,u\end{array}\]
+<div class="cl thm"><div class="clb">Master Structure Theorem (ARV 2004)</div>
+<p>Let \(v_1,\ldots,v_n\in\mathbb{R}^n\), \(\|v_i\|^2\le 1\), squared distances forming a metric, \(\frac{1}{n^2}\sum_{i,j}\|v_i-v_j\|^2=\Omega(1)\). Then \(\exists\,S,T\subseteq V\) with \(|S|=|T|=\Omega(n)\) and</p>
+\[d(S,T)=\min_{s\in S,t\in T}\|v_s-v_t\|\ge\Omega\!\left(\frac{1}{\sqrt{\log n}}\right)\]
+<p style="margin:0">Tight example: hypercube \(\{0,1\}^m\), \(n=2^m\) points in \(m=\log n\) dimensions.</p>
+</div>
+<div class="ab"><div class="ah"><span>ARV &mdash; Arora-Rao-Vazirani</span><span class="cx">\(O(n^\omega)\) SDP + poly rounding</span></div>
+<ol class="as">
+<li><strong>Solve SDP:</strong> Obtain unit vectors \(\{v_u\}\), value \(\mathrm{OPT}_{\mathrm{SDP}}\).</li>
+<li><strong>Structure theorem:</strong> Find \(S,T\) with \(|S|=|T|=\Omega(n)\) and \(d(S,T)\ge\Omega(1/\sqrt{\log n})\).</li>
+<li><strong>Random projection:</strong> Sample \(\mathbf{g}\sim\mathcal{N}(0,I_n)\). Compute \(p_v=\langle\mathbf{g},v_v\rangle\) for each \(v\).</li>
+<li><strong>Threshold cut:</strong> Choose \(\theta\) uniformly between projected medians of \(S\) and \(T\). Output \(\{v:p_v\le\theta\}\).</li>
+<li><strong>Repeat</strong> \(O(\log n)\) times; return minimum sparsity cut.</li>
+</ol></div>
+<p>The rounding loses \(O(\sqrt{\log n})\) relative to the SDP, giving an overall \(O(\sqrt{\log n})\)-approximation. The SDP integrality gap is also \(\Omega(\sqrt{\log n})\) (tight, hypercube construction).</p>
+</section>
+
+<section id="balsep">
+<h2 class="st"><span class="sn">&sect;5b</span> Balanced Separator &mdash; Connection to Sparsest Cut</h2>
+<div class="cl def"><div class="clb">Definition &mdash; Balanced Separator</div>
+<p style="margin:0">A <strong>\((\beta,f)\)-balanced separator</strong> of \(G=(V,E)\) is \(F\subseteq E\) such that every connected component of \(G-F\) has \(\le\beta n\) vertices and \(|F|\le f(n)\). The canonical case is \(\beta=2/3\).</p></div>
+<h3>Formal Reduction from Sparsest Cut</h3>
+\[\phi_b(G)=\min_{\substack{S\subseteq V\\n/3\le|S|\le 2n/3}}\frac{|\delta(S)|}{|S||V\setminus S|},\qquad\phi^*(G)\le\phi_b(G)\le\tfrac{9}{2}\,\phi^*(G)\]
+<p>The right inequality: if optimal cut \(S^*\) is unbalanced (\(|S^*|&lt;n/3\)), extend it by including the neighboring component until balanced; this multiplies sparsity by at most \(9/2\).</p>
+<div class="cl thm"><div class="clb">Theorem &mdash; Balanced Separator from Sparsest Cut (Leighton-Rao 1988)</div>
+<p>Given an \(\alpha\)-approximation \(\mathcal{A}\) for Sparsest Cut, the algorithm below finds a \((2/3)\)-balanced separator \(F\) with \(|F|\le O(\alpha\cdot\phi^*(G)\cdot n)\).</p></div>
+<div class="ab"><div class="ah"><span>BalancedSeparator via Sparsest Cut</span><span class="cx">\(O(T_{\mathcal{A}})\) per level, \(O(\log n)\) levels</span></div>
+<ol class="as">
+<li><strong>Sparse cut:</strong> Run \(\mathcal{A}\) on \(G\) to get cut \((S,V\setminus S)\) with sparsity \(\le\alpha\cdot\phi^*(G)\).</li>
+<li><strong>Check balance:</strong> If \(n/3\le|S|\le 2n/3\), output \(\delta(S)\).</li>
+<li><strong>Re-balance:</strong> If \(|S|&lt;n/3\), move vertices from the largest neighboring component into \(S\) until balanced.</li>
+<li><strong>Output</strong> the balanced cut edges \(\delta(S')\).</li>
+</ol></div>
+<h3>Recursive Application</h3>
+<p>Applying recursively gives a separator tree of depth \(O(\log n)\). Total edges cut across all levels:</p>
+\[\sum_{\text{levels}}|F_\ell|\le\alpha\cdot\phi^*(G)\cdot O(n\log n)\]
+<table class="ct"><tr><th>Problem</th><th>Without sep.</th><th>Using balanced sep.</th><th>Ratio needed</th></tr>
+<tr><td>Minimum bisection</td><td>NP-hard</td><td>\(O(\sqrt{\log n})\)-approx.</td><td>ARV</td></tr>
+<tr><td>Graph partitioning (VLSI)</td><td>NP-hard</td><td>\(O(\sqrt{\log n})\)-approx.</td><td>ARV</td></tr>
+<tr><td>Shortest paths (approx.)</td><td>\(O(n^2)\)</td><td>\(O(n\log^2 n)\)</td><td>LR</td></tr>
+<tr><td>Balanced \(k\)-partition</td><td>NP-hard</td><td>\(O(\log k\cdot\sqrt{\log n})\)</td><td>ARV</td></tr>
+</table>
+<h3>Vertex Separators and Treewidth</h3>
+\[\text{tw}(G)\le O\!\left(\phi_{\mathrm{sep}}^*(G)\cdot\sqrt{\log n}\right)\text{ (FHL 2005)}\]
+<div class="dc"><div class="dt">Interactive &mdash; Balanced separator on a random graph</div>
+<canvas id="bsc" height="330"></canvas>
+<div class="btns">
+<button class="btn" onclick="bsRun()">&#9654; Run Separator</button>
+<button class="btn ol" onclick="bsRst()">Reset</button>
+<button class="btn ol" onclick="bsNew()">New Graph</button>
+</div>
+<div class="di" id="bsi">Click &ldquo;Run Separator&rdquo;. Orange edges = separator; left (teal) vs right (orange) components.</div></div>
+</section>
+
+<section id="proofs">
+<h2 class="st"><span class="sn">&sect;6</span> Key Proofs &amp; Analysis</h2>
+<h3>LP is a Relaxation</h3>
+<div class="cl pf"><div class="clb">Proof</div>
+<p>Given integer cut \(S\) with sparsity \(\lambda\), set \(d=d_S/Z\), \(Z=\sum_i D_i d_S(s_i,t_i)\). Normalization holds, triangle inequality holds, LP value \(=c(\delta(S))/Z=\lambda\). So \(\mathrm{OPT}_{\mathrm{LP}}\le\mathrm{OPT}_{\mathrm{INT}}\).</p><div class="qed">&#9632;</div></div>
+<h3>LP is Tight on Trees</h3>
+<div class="cl pf"><div class="clb">Proof &mdash; Lemma 6</div>
+<p>LP-feasible \(d\), value \(\lambda\). On a tree \(d(s_i,t_i)=\sum_{e\in P_i}d(e)\). Let \(D(e)=\sum_{i:e\in P_i}D_i\). Then:</p>
+\[\lambda=\frac{\sum_e c(e)d(e)}{\sum_e d(e)D(e)}\ge\min_e\frac{c(e)}{D(e)}=\mathrm{OPT}_{\mathrm{INT}}\]
+<p>So \(\mathrm{OPT}_{\mathrm{LP}}=\mathrm{OPT}_{\mathrm{INT}}\) on trees (no integrality gap).</p><div class="qed">&#9632;</div></div>
+<h3>Flow-Cut Gap is \(O(\log k)\)</h3>
+<div class="cl pf"><div class="clb">Proof Sketch &mdash; Theorem 11</div>
+<p>Embed \((V,d^*)\) into &#8467;&#8321; with distortion \(\alpha=O(\log k)\) as a contraction; write \(\ell_1\) metric as \(\sum_S z_S d_S\). Then:</p>
+\[\lambda=\frac{\sum_e c(e)d^*(e)}{\sum_i D_i d^*(s_i,t_i)}\ge\frac{\sum_S z_S c(\delta(S))}{\alpha\sum_S z_S\mathrm{Dem}(\delta(S))}\ge\frac{1}{\alpha}\min_S\phi(S)\]
+<p>So flow-cut gap \(\le O(\log k)\).</p><div class="qed">&#9632;</div></div>
+</section>
+
+<section id="gap">
+<h2 class="st"><span class="sn">&sect;7</span> Research Timeline &amp; Open Problems</h2>
+<div class="tln">
+<div class="ti"><div class="td"></div><div class="ty">1988 &mdash; Leighton &amp; Rao</div><div class="tc"><strong>\(O(\log n)\)</strong> approximation. Region growing, LP duality, expander lower bound \(\Omega(\log n)\).</div></div>
+<div class="ti"><div class="td"></div><div class="ty">1994&ndash;1998 &mdash; LLR, Aumann-Rabani</div><div class="tc"><strong>\(O(\log k)\)</strong> via metric embeddings. Connected flow-cut gap to &#8467;&#8321; embeddability.</div></div>
+<div class="ti"><div class="td hl"></div><div class="ty">2004 &mdash; Arora, Rao, Vazirani</div><div class="tc"><strong>\(O(\sqrt{\log n})\)</strong> via SDP. First sub-logarithmic approximation. Master Structure Theorem.</div></div>
+<div class="ti"><div class="td"></div><div class="ty">2005 &mdash; Feige, Hajiaghayi, Lee</div><div class="tc">Node-capacitated Sparsest Cut. <strong>\(O(\sqrt{\log n})\)</strong>-approx. for treewidth via line embeddings.</div></div>
+<div class="ti"><div class="td"></div><div class="ty">2007&ndash;2008 &mdash; Arora, Lee, Naor</div><div class="tc"><strong>\(O(\sqrt{\log n\log\log n})\)</strong> for non-uniform via Fréchet embeddings of negative-type metrics.</div></div>
+<div class="ti"><div class="td"></div><div class="ty">2010s &mdash; SDP Gap Lower Bound</div><div class="tc">ARV SDP integrality gap is <strong>\(\Omega(\sqrt{\log n})\)</strong> (tight). Rules out \(O(1)\) via ARV SDP alone.</div></div>
+</div>
+<h3>Open Problems</h3>
+<ul class="bl2">
+<li><strong>Sub-\(\sqrt{\log n}\) approximation:</strong> SDP gap rules out improvement via ARV-style SDPs. Whether \(O(1)\) is achievable by other methods is completely open.</li>
+<li><strong>Directed graphs:</strong> Flow-cut gap can be \(\Omega(n^{11/27})\) (Chuzhoy-Khanna 2009), with near-polynomial hardness.</li>
+<li><strong>Special graph families:</strong> Series-parallel graphs have gap exactly 2 (tight). Tight constants for other minor-closed families remain open.</li>
+<li><strong>SDP hierarchies:</strong> Do Lasserre or Sherali-Adams hierarchies beat \(O(\sqrt{\log n})\)?</li>
+</ul>
+</section>
+
+<section id="sim">
+<h2 class="st"><span class="sn">&sect;8</span> Simulation &mdash; &#8467;&#8321; Projection Rounding</h2>
+<p>The animation below shows the core rounding step. A random projection direction is chosen; the threshold sweeps across projected points (700&thinsp;ms per step), evaluating each prefix cut for sparsity. The best cut found is shown at the end.</p>
+<div class="dc"><div class="dt">Sparsest Cut &mdash; &#8467;&#8321; Projection Sweep (Animated)</div>
+<canvas id="sc" height="330"></canvas>
+<div class="btns">
+<button class="btn" onclick="runSim()">&#9654; Run Sweep</button>
+<button class="btn ol" onclick="rstSim()">Reset</button>
+<button class="btn ol" onclick="newGraph()">New Graph</button>
+</div>
+<div class="di" id="si">Click &ldquo;Run Sweep&rdquo; to watch the projection threshold find a sparse cut.</div></div>
+<div class="dc"><div class="dt">Typical approximation ratio: algorithm output / LP lower bound</div>
+<div class="br"><div class="bl"><span>Random dense graph (\(n=50\))</span><span style="color:var(--rust);font-family:'JetBrains Mono',monospace;font-size:.77rem">~1.4&times;</span></div><div class="bt"><div class="bf fr2" id="b1" style="width:0%"></div></div></div>
+<div class="br"><div class="bl"><span>Expander graph</span><span style="color:var(--rust);font-family:'JetBrains Mono',monospace;font-size:.77rem">~2.1&times;</span></div><div class="bt"><div class="bf fr2" id="b2" style="width:0%"></div></div></div>
+<div class="br"><div class="bl"><span>Grid / planar graph</span><span style="color:var(--teal);font-family:'JetBrains Mono',monospace;font-size:.77rem">~1.1&times;</span></div><div class="bt"><div class="bf ft2" id="b3" style="width:0%"></div></div></div>
+<div class="br"><div class="bl"><span>Tree metric</span><span style="color:var(--teal);font-family:'JetBrains Mono',monospace;font-size:.77rem">1.0&times; (exact)</span></div><div class="bt"><div class="bf ft2" id="b4" style="width:0%"></div></div></div>
+<div class="br"><div class="bl"><span>Worst case (expander lower bound)</span><span style="color:var(--gold);font-family:'JetBrains Mono',monospace;font-size:.77rem">\(O(\log n)\)</span></div><div class="bt"><div class="bf fg2" id="b5" style="width:0%"></div></div></div>
+<p style="font-size:.74rem;color:var(--muted);margin-top:.55rem;">The \(O(\log k)\) guarantee is a worst-case upper bound, rarely achieved on random instances.</p>
+</div>
+</section>
+
+<section id="conclusion">
+<h2 class="st"><span class="sn">&sect;9</span> Conclusion</h2>
+<p>The Sparsest Cut problem has driven the development of deep tools across combinatorial optimization, metric geometry, and semidefinite programming over three decades. Starting from the ratio objective \(\phi(S)=c(\delta(S))/\mathrm{Dem}(\delta(S))\), the problem has resisted exact algorithms and pushed researchers toward increasingly sophisticated techniques.</p>
+<p>The journey &mdash; from LP relaxation to &#8467;&#8321; embeddings (O(log k)) to SDP (O(&radic;log n)) &mdash; illustrates a recurring pattern: <em>the right geometric relaxation unlocks exponential improvements</em>. The connection to balanced separators shows that every improvement in Sparsest Cut has immediate algorithmic consequences across graph algorithms. The &#8467;&#8321; = cut-cone characterization, proved in full above, is the foundational insight tying metric geometry to graph cuts.</p>
+<div class="cl nt"><div class="clb">The Big Picture</div>
+<p style="margin:0">Sparsest Cut is a lens through which we study the geometry of graphs. The SDP integrality gap of \(\Omega(\sqrt{\log n})\) shows the ARV approach is tight &mdash; any future improvement requires genuinely new mathematical ideas beyond SDP relaxations.</p></div>
+</section>
+
+<section id="contrib">
+<h2 class="st"><span class="sn">&sect;10</span> Individual Contributions</h2>
+<div class="cg">
+<div class="cc">
+<div class="ca">RJ</div>
+<div class="cn">Rushabhkumar Jain</div>
+<div class="cr">Problem Formulation, LP Duality &amp; Proofs</div>
+<div class="ctags"><span class="ctag">Research </span><span class="ctag">Documentation</span><span class="ctag">Code</span></div>
+</div>
+<div class="cc">
+<div class="ca">SP</div>
+<div class="cn">Shivam Patel</div>
+<div class="cr">Rounding Algorithms &amp; Metric Embeddings</div>
+<div class="ctags"><span class="ctag">Research </span><span class="ctag">Documentation</span><span class="ctag">Code</span></div>
+</div>
+<div class="cc">
+<div class="ca">KM</div>
+<div class="cn">Krish Malhotra</div>
+<div class="cr">ARV SDP, Balanced Separator &amp; Simulations</div>
+<div class="ctags"><span class="ctag">Research </span><span class="ctag">Documentation</span><span class="ctag">Code</span></div>
+</div>
+</div>
+</section>
+
+<section id="refs">
+<h2 class="st"><span class="sn">&sect;11</span> References</h2>
+<ul class="rl">
+<li>T. Leighton, S. Rao. &ldquo;Multicommodity max-flow min-cut theorems.&rdquo; <em>J. ACM</em> 46(6), 1999.</li>
+<li>N. Linial, E. London, Y. Rabinovich. &ldquo;Geometry of graphs and algorithmic applications.&rdquo; <em>Combinatorica</em> 15(2), 1995.</li>
+<li>Y. Aumann, Y. Rabani. &ldquo;O(log k) approximate min-cut max-flow.&rdquo; <em>SIAM J. Comput.</em> 27(1), 1998.</li>
+<li>S. Arora, S. Rao, U. Vazirani. &ldquo;Expander flows, geometric embeddings, graph partitioning.&rdquo; <em>J. ACM</em> 56(2), 2009.</li>
+<li>S. Arora, J. R. Lee, A. Naor. &ldquo;Euclidean distortion and sparsest cut.&rdquo; <em>J. AMS</em> 21(1), 2008.</li>
+<li>U. Feige, M. T. Hajiaghayi, J. R. Lee. &ldquo;Improved approx. for vertex separators.&rdquo; <em>STOC</em>, 2005.</li>
+<li>J. Chuzhoy, S. Khanna. &ldquo;Polynomial flow-cut gaps, directed cut problems.&rdquo; <em>J. ACM</em> 56(2), 2009.</li>
+<li>J. Bourgain. &ldquo;On Lipschitz embedding of finite metric spaces.&rdquo; <em>Israel J. Math.</em> 52, 1985.</li>
+<li>J. Shi, J. Malik. &ldquo;Normalized cuts and image segmentation.&rdquo; <em>IEEE TPAMI</em> 22(8), 2000.</li>
+<li>D. P. Williamson, D. B. Shmoys. <em>The Design of Approximation Algorithms.</em> Cambridge, 2011.</li>
+<li>C. Chekuri. &ldquo;Topics in Graph Algorithms &mdash; Sparsest Cut lecture notes.&rdquo; UIUC, 2024.</li>
+<li>A. Gupta, I. Newman, Y. Rabinovich, A. Sinclair. &ldquo;Cuts, trees and &#8467;&#8321;-embeddings.&rdquo; <em>FOCS</em>, 1999.</li>
+</ul>
+</section>
+</main>
+<button id="bt" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#8593;</button>
+<script>
+const obs=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting)x.target.classList.add("visible");});},{threshold:.06});
+document.querySelectorAll("section").forEach(s=>obs.observe(s));
+const ss=document.querySelectorAll("section[id]"),na=document.querySelectorAll("nav a");
+window.addEventListener("scroll",()=>{let c="";ss.forEach(s=>{if(window.scrollY>=s.offsetTop-80)c=s.id;});na.forEach(a=>a.classList.toggle("active",a.getAttribute("href")==="#"+c));document.getElementById("bt").classList.toggle("show",window.scrollY>400);});
+setTimeout(()=>{[["b1","28%"],["b2","42%"],["b3","22%"],["b4","6%"],["b5","75%"]].forEach(([id,w])=>{const e=document.getElementById(id);if(e)e.style.width=w;});},1200);
+
+function updFC(){
+  const cap=+document.getElementById("cap").value,dem=+document.getElementById("dem").value,fp=+document.getElementById("flw").value,fl=fp/100;
+  document.getElementById("cv").textContent=cap;document.getElementById("dv").textContent=dem;document.getElementById("fv").textContent=fl.toFixed(2);
+  const sp=dem>0?(cap/dem).toFixed(3):"inf";const gn=dem>0&&fl>0?parseFloat(sp)/fl:Infinity;
+  const g=isFinite(gn)?gn.toFixed(3):"inf";const col=gn<=1.5?"#1a6b6b":gn<=3?"#b8860b":"#c04a1a";
+  const nt=gn>Math.log2(50)?" <- near worst case":gn>2?" <- gap > 1":" <- nearly tight";
+  document.getElementById("fres").innerHTML="sparsity = "+cap+"/"+dem+" = <span style='color:var(--rust);font-weight:500'>"+sp+"</span>\nλ* ≈ "+fl.toFixed(2)+"\ngap = <span style='color:"+col+";font-weight:500'>"+g+"</span>"+nt;
+}
+updFC();
+
+// ── GRAPH CANVAS (§3) ──
+const GC=document.getElementById("gc"),GX=GC.getContext("2d");
+function rzGC(){GC.width=GC.clientWidth;GC.height=290;drawG();}
+window.addEventListener("resize",rzGC);
+const GN=[{id:"A",rx:.12,ry:.5},{id:"B",rx:.32,ry:.24},{id:"C",rx:.57,ry:.18},{id:"D",rx:.32,ry:.76},{id:"E",rx:.57,ry:.81},{id:"F",rx:.82,ry:.5}];
+const GE=[{u:0,v:1,c:4},{u:0,v:3,c:3},{u:1,v:2,c:2},{u:1,v:4,c:2},{u:2,v:5,c:5},{u:3,v:4,c:3},{u:4,v:5,c:4},{u:2,v:3,c:1}];
+const GD=[{s:0,t:2,d:2,col:"#c04a1a"},{s:0,t:4,d:1,col:"#1a6b6b"},{s:1,t:5,d:1,col:"#b8860b"},{s:3,t:5,d:2,col:"#7a4ab8"}];
+let CS=new Set();
+function gp(i){return{x:GN[i].rx*GC.width,y:GN[i].ry*GC.height};}
+function drawG(){
+  if(!GC.width){setTimeout(drawG,100);return;}
+  GX.clearRect(0,0,GC.width,GC.height);
+  GD.forEach(d=>{const p1=gp(d.s),p2=gp(d.t),sep=(CS.has(d.s)!==CS.has(d.t));GX.save();GX.setLineDash([5,4]);GX.beginPath();GX.moveTo(p1.x,p1.y);GX.lineTo(p2.x,p2.y);GX.strokeStyle=sep?d.col:"#ccc";GX.lineWidth=sep?2:1;GX.globalAlpha=sep?.7:.3;GX.stroke();GX.restore();});
+  GE.forEach(e=>{const p1=gp(e.u),p2=gp(e.v),ic=(CS.has(e.u)!==CS.has(e.v));GX.beginPath();GX.moveTo(p1.x,p1.y);GX.lineTo(p2.x,p2.y);GX.strokeStyle=ic?"#c04a1a":"#d4cfc6";GX.lineWidth=ic?3:1.5;GX.stroke();const mx=(p1.x+p2.x)/2,my=(p1.y+p2.y)/2;GX.fillStyle=ic?"#c04a1a":"#999";GX.font="10px JetBrains Mono,monospace";GX.fillText("c="+e.c,mx+3,my-3);});
+  GN.forEach((_,i)=>{const{x,y}=gp(i),inS=CS.has(i);GX.beginPath();GX.arc(x,y,17,0,Math.PI*2);GX.fillStyle=inS?"#f5e6df":"white";GX.fill();GX.strokeStyle=inS?"#c04a1a":"#bbb";GX.lineWidth=inS?2.5:1.5;GX.stroke();GX.fillStyle=inS?"#c04a1a":"#333";GX.font="500 12px DM Sans,sans-serif";GX.textAlign="center";GX.textBaseline="middle";GX.fillText(GN[i].id,x,y);});
+  let cap=0,dem=0;GE.forEach(e=>{if(CS.has(e.u)!==CS.has(e.v))cap+=e.c;});GD.forEach(d=>{if(CS.has(d.s)!==CS.has(d.t))dem+=d.d;});
+  const info=document.getElementById("gdi");
+  if(CS.size===0){info.textContent="Click nodes to toggle them into cut set S (orange). Dashed = demand pairs.";return;}
+  info.textContent="S={"+[...CS].map(i=>"ABCDEF"[i]).join(",")+"} | c(δS)="+cap+" | Dem(δS)="+dem+" | Sparsity="+(dem>0?(cap/dem).toFixed(3):"∞");
+}
+GC.addEventListener("click",e=>{const r=GC.getBoundingClientRect(),sx=GC.width/r.width,sy=GC.height/r.height,mx=(e.clientX-r.left)*sx,my=(e.clientY-r.top)*sy;GN.forEach((_,i)=>{const{x,y}=gp(i);if(Math.hypot(mx-x,my-y)<20){CS.has(i)?CS.delete(i):CS.add(i);}});drawG();});
+function resetCut(){CS.clear();drawG();}
+function showOptCut(){CS=new Set([0,1,3]);drawG();}
+function showBadCut(){CS=new Set([0]);drawG();}
+setTimeout(rzGC,100);
+
+// ── CUT-METRIC CANVAS ──
+const CMC=document.getElementById("cmc"),CMX=CMC.getContext("2d");
+function rzCM(){CMC.width=CMC.clientWidth;CMC.height=250;cmDraw();}
+window.addEventListener("resize",rzCM);
+const CMV=[{id:"v₁",c:.05},{id:"v₂",c:.18},{id:"v₃",c:.35},{id:"v₄",c:.52},{id:"v₅",c:.65},{id:"v₆",c:.80},{id:"v₇",c:.94}];
+const CMC2=["#c04a1a","#1a6b6b","#b8860b","#7a4ab8","#1a4a8b","#2e6b1a"];
+let cms=0;
+function cmDraw(){
+  if(!CMC.width){setTimeout(cmDraw,100);return;}
+  const W=CMC.width,H=CMC.height,step=cms;
+  CMX.clearRect(0,0,W,H);
+  const ly=H*.37,aL=W*.06,aR=W*.92;
+  CMX.strokeStyle="#d4cfc6";CMX.lineWidth=2;CMX.beginPath();CMX.moveTo(aL,ly);CMX.lineTo(aR,ly);CMX.stroke();
+  CMX.beginPath();CMX.moveTo(aR,ly);CMX.lineTo(aR-7,ly-5);CMX.lineTo(aR-7,ly+5);CMX.closePath();CMX.fillStyle="#d4cfc6";CMX.fill();
+  if(step>=1){
+    const cx=aL+CMV[step].c*(aR-aL),col=CMC2[step-1];
+    CMX.fillStyle=col+"22";CMX.fillRect(aL,ly-18,cx-aL,36);
+    CMX.save();CMX.setLineDash([5,3]);CMX.strokeStyle=col;CMX.lineWidth=2;CMX.beginPath();CMX.moveTo(cx,ly-26);CMX.lineTo(cx,ly+26);CMX.stroke();CMX.restore();
+    const px=aL+CMV[step-1].c*(aR-aL);
+    CMX.fillStyle=col;CMX.font="500 9px JetBrains Mono,monospace";CMX.textAlign="center";
+    CMX.fillText("λ(S"+step+")="+(CMV[step].c-CMV[step-1].c).toFixed(2),(px+cx)/2,ly-22);
+  }
+  CMV.forEach((v,i)=>{
+    const x=aL+v.c*(aR-aL),inS=step>0&&i<step;
+    CMX.beginPath();CMX.arc(x,ly,10,0,Math.PI*2);CMX.fillStyle=inS?CMC2[step-1]+"cc":"white";CMX.fill();CMX.strokeStyle=inS?CMC2[step-1]:"#aaa";CMX.lineWidth=2;CMX.stroke();
+    CMX.fillStyle=inS?"white":"#333";CMX.font="500 10px DM Sans,monospace";CMX.textAlign="center";CMX.textBaseline="middle";CMX.fillText(v.id,x,ly);
+    CMX.fillStyle="#888";CMX.font="8px JetBrains Mono,monospace";CMX.textBaseline="top";CMX.fillText(v.c.toFixed(2),x,ly+13);
+  });
+  const bY=H*.7,bH=22;CMX.fillStyle="#f3f0ea";CMX.fillRect(aL,bY,aR-aL,bH);CMX.strokeStyle="#d4cfc6";CMX.lineWidth=1;CMX.strokeRect(aL,bY,aR-aL,bH);
+  let acc=0;for(let j=1;j<=step;j++){const w=CMV[j].c-CMV[j-1].c,bx=aL+CMV[j-1].c*(aR-aL);CMX.fillStyle=CMC2[j-1]+"cc";CMX.fillRect(bx,bY+1,w*(aR-aL)-1,bH-2);acc+=w;}
+  CMX.fillStyle="#555";CMX.font="9px JetBrains Mono,monospace";CMX.textAlign="left";CMX.textBaseline="middle";CMX.fillText("∑λ(Sⱼ) = "+acc.toFixed(3),aL,bY+bH+12);
+  CMX.fillStyle="#333";CMX.font="500 11px DM Sans,sans-serif";CMX.textAlign="center";CMX.textBaseline="top";
+  CMX.fillText(step===0?"Vertices sorted by ℓ₁ coordinate value":"S_"+step+"={v₁…v"+step+"}, λ(S_"+step+")="+(CMV[step].c-CMV[step-1].c).toFixed(3),W/2,5);
+  const ex=document.getElementById("cme");
+  ex.innerHTML=step===0?"Vertices <strong>sorted</strong> on the real line by coordinate \\(v_j(i)\\). We will create prefix sets \\(S_1=\\{v_1\\}, S_2=\\{v_1,v_2\\},\\ldots\\) with weights \\(\\lambda_i(S_j)=v_{j+1}(i)-v_j(i)\\).":"Prefix cut <strong>S_"+step+"</strong> separates left "+step+" vertices from right. Weight = \\(v_{"+(step+1)+"}(i)-v_{"+step+"}(i)="+(CMV[step].c-CMV[step-1].c).toFixed(3)+"\\). Contribution to any pair \\((v_a,v_b)\\) with \\(a\\le "+step+" < b\\). Bar below telescopes: \\(\\sum_{j=a}^{b-1}\\lambda_i(S_j)=v_b(i)-v_a(i)=d_i(v_a,v_b)\\).";
+  if(window.MathJax&&MathJax.typesetPromise)MathJax.typesetPromise([ex]).catch(()=>{});
+}
+function cmS(d){cms=Math.max(0,Math.min(CMV.length-1,cms+d));cmDraw();}
+function cmRst(){cms=0;cmDraw();}
+setTimeout(()=>rzCM(),200);
+
+// ── LR WALKTHROUGH ──
+const LRC=document.getElementById("lrc"),LRX=LRC.getContext("2d");
+function rzLR(){LRC.width=LRC.clientWidth;LRC.height=280;lrDraw();}
+window.addEventListener("resize",rzLR);
+const LRN=[{id:"A",rx:.12,ry:.5},{id:"B",rx:.32,ry:.23},{id:"C",rx:.55,ry:.18},{id:"D",rx:.32,ry:.77},{id:"E",rx:.55,ry:.81},{id:"F",rx:.82,ry:.5}];
+const LRE=[{u:0,v:1,c:3},{u:0,v:3,c:2},{u:1,v:2,c:2},{u:1,v:4,c:1},{u:2,v:5,c:4},{u:3,v:4,c:3},{u:4,v:5,c:3},{u:2,v:3,c:1}];
+const LRS=[
+{t:"Step 0 — Solve the LP",d:"Solve the LP to get semi-metric d*. Each vertex gets a projected coordinate. The projection direction is shown as dashed line."},
+{t:"Step 1 — Sort by projection",d:"Sort vertices by projected coordinate giving order v_{π(1)}, …, v_{π(n)}. Each prefix defines a candidate cut S_{i,h}."},
+{t:"Step 2 — Prefix cut S₁",d:"First prefix: S = {first vertex}. Evaluate sparsity = c(δS)/Dem(δS). The ℓ₁ = cut-cone theorem guarantees one prefix achieves sparsity ≤ α·OPT_LP."},
+{t:"Step 3 — Prefix cut S₂",d:"Expand cut side by one vertex. Track best sparsity seen so far."},
+{t:"Step 4 — Prefix cut S₃",d:"Continue expanding. By the averaging argument over the cut-cone decomposition, some prefix must achieve sparsity ≤ α·OPT_LP."},
+{t:"Step 5 — Prefix cut S₄",d:"Continuing sweep. Trying every prefix ensures we do not miss the good cut."},
+{t:"Step 6 — Best cut found",d:"After all O(dn) prefix cuts across all dimensions, return minimum sparsity one. Guarantee: sparsity ≤ O(log k)·OPT_INT."},
+];
+let lrs=0,lrA=0.5;
+function lrp2(i){return{x:LRN[i].rx*LRC.width,y:LRN[i].ry*LRC.height};}
+function lrDraw(){
+  if(!LRC.width){setTimeout(lrDraw,100);return;}
+  LRX.clearRect(0,0,LRC.width,LRC.height);
+  const projs=LRN.map((_,i)=>{const p=lrp2(i);return{i,proj:p.x*Math.cos(lrA)+p.y*Math.sin(lrA)};});
+  projs.sort((a,b)=>a.proj-b.proj);const cutSet=new Set(projs.slice(0,lrs).map(p=>p.i));
+  const cx=LRC.width/2,cy=LRC.height/2;
+  LRX.save();LRX.setLineDash([7,5]);LRX.beginPath();LRX.moveTo(cx-Math.cos(lrA)*400,cy-Math.sin(lrA)*400);LRX.lineTo(cx+Math.cos(lrA)*400,cy+Math.sin(lrA)*400);LRX.strokeStyle="rgba(26,107,107,0.2)";LRX.lineWidth=1.5;LRX.stroke();LRX.restore();
+  LRE.forEach(e=>{const p1=lrp2(e.u),p2=lrp2(e.v),ic=(lrs>0&&cutSet.has(e.u)!==cutSet.has(e.v));LRX.beginPath();LRX.moveTo(p1.x,p1.y);LRX.lineTo(p2.x,p2.y);LRX.strokeStyle=ic?"#c04a1a":"#d4cfc6";LRX.lineWidth=ic?2.5:1.5;LRX.stroke();const mx=(p1.x+p2.x)/2,my=(p1.y+p2.y)/2;LRX.fillStyle="#aaa";LRX.font="9px JetBrains Mono,monospace";LRX.fillText("c="+e.c,mx+3,my-3);});
+  LRN.forEach((_,i)=>{const{x,y}=lrp2(i),inS=lrs>0&&cutSet.has(i),rank=projs.findIndex(p=>p.i===i)+1;LRX.beginPath();LRX.arc(x,y,17,0,Math.PI*2);LRX.fillStyle=inS?"#f5e6df":"white";LRX.fill();LRX.strokeStyle=inS?"#c04a1a":"#bbb";LRX.lineWidth=inS?2.5:1.5;LRX.stroke();LRX.fillStyle=inS?"#c04a1a":"#333";LRX.font="500 12px DM Sans,sans-serif";LRX.textAlign="center";LRX.textBaseline="middle";LRX.fillText(LRN[i].id,x,y);if(lrs>=1){LRX.fillStyle="#999";LRX.font="8px JetBrains Mono,monospace";LRX.fillText("#"+rank,x,y+24);}});
+  if(lrs>0){let cap=0,dem=0;LRE.forEach(e=>{if(cutSet.has(e.u)!==cutSet.has(e.v))cap+=e.c;});const n=LRN.length;for(let a=0;a<n;a++)for(let b=a+1;b<n;b++)if(cutSet.has(a)!==cutSet.has(b))dem++;document.getElementById("lri").textContent="S={"+[...cutSet].map(i=>LRN[i].id).join(",")+"} | c(δS)="+cap+" | Dem="+dem+" | Sparsity="+(dem>0?(cap/dem).toFixed(3):"∞");}
+  else document.getElementById("lri").textContent="Projection direction = dashed teal line.";
+  const el=document.getElementById("lre");el.innerHTML="<strong>"+LRS[lrs].t+"</strong><br>"+LRS[lrs].d;
+  document.getElementById("lrp").disabled=lrs===0;document.getElementById("lrn").disabled=lrs===LRS.length-1;
+}
+function lrS(d){lrs=Math.max(0,Math.min(LRS.length-1,lrs+d));lrDraw();}
+function lrRst(){lrs=0;lrDraw();}
+function lrNew(){lrA=Math.random()*Math.PI*.7+.2;lrs=0;lrDraw();}
+setTimeout(()=>rzLR(),160);
+
+// ── GROUP LEMMA CANVAS ──
+const GLC=document.getElementById("glc"),GLX=GLC.getContext("2d");
+function rzGL(){GLC.width=GLC.clientWidth;GLC.height=310;glDraw();}
+window.addEventListener("resize",rzGL);
+const GLC2=["#c04a1a","#1a6b6b","#b8860b","#7a4ab8","#1a4a8b","#2e6b1a"];
+let glPairs=[],glPh=0;
+function glNewP(){glPairs=[];for(let i=0;i<12;i++)glPairs.push({i,d:Math.random()*.9+.05,dem:1+Math.floor(Math.random()*3),group:-1});const tot=glPairs.reduce((s,p)=>s+p.d*p.dem,0);glPairs.forEach(p=>{p.d=p.d/tot;});glPh=0;}
+function glAssign(){const dm=Math.max(...glPairs.map(p=>p.d)),ml=Math.ceil(Math.log2(glPairs.length)*2)+1;glPairs.forEach(p=>{for(let l=0;l<=ml;l++){if(p.d>dm/Math.pow(2,l+1)&&p.d<=dm/Math.pow(2,l)){p.group=l;return;}}p.group=ml+1;});}
+function glHeavy(){const dm=Math.max(...glPairs.map(p=>p.d)),gs={};glPairs.forEach(p=>{if(!gs[p.group])gs[p.group]={dem:0,scale:dm/Math.pow(2,p.group+1),l:p.group};gs[p.group].dem+=p.dem;});let bg=-1,bv=-1;Object.values(gs).forEach(g=>{if(g.dem*g.scale>bv){bv=g.dem*g.scale;bg=g.l;}});return{group:bg,val:bv};}
+function glDraw(){
+  if(!GLC.width){setTimeout(glDraw,100);return;}
+  const W=GLC.width,H=GLC.height,pL=50,pR=45,pT=42,pB=65,cW=W-pL-pR,cH=H-pT-pB;
+  GLX.clearRect(0,0,W,H);if(!glPairs.length)return;
+  const sorted=[...glPairs].sort((a,b)=>b.d-a.d),dm=Math.max(...glPairs.map(p=>p.d)),bW=Math.max(7,Math.floor(cW/sorted.length)-3);
+  GLX.strokeStyle="#bbb";GLX.lineWidth=1;GLX.beginPath();GLX.moveTo(pL,pT);GLX.lineTo(pL,pT+cH);GLX.lineTo(pL+cW,pT+cH);GLX.stroke();
+  GLX.fillStyle="#888";GLX.font="10px JetBrains Mono,monospace";GLX.textAlign="center";GLX.fillText("Pairs sorted by LP distance dᵢ",pL+cW/2,H-8);
+  [0,.25,.5,.75,1].forEach(v=>{const y=pT+cH*(1-v);GLX.strokeStyle="#ece8e0";GLX.beginPath();GLX.moveTo(pL,y);GLX.lineTo(pL+cW,y);GLX.stroke();GLX.fillStyle="#888";GLX.font="8px JetBrains Mono,monospace";GLX.textAlign="right";GLX.fillText((v*dm).toFixed(3),pL-3,y+3);});
+  if(glPh>=1){glAssign();const ml=Math.max(...glPairs.map(p=>p.group));for(let l=0;l<=ml;l++){const tr=dm/Math.pow(2,l+1),y=pT+cH*(1-tr/dm);GLX.save();GLX.setLineDash([4,3]);GLX.strokeStyle=GLC2[l%GLC2.length]+"88";GLX.lineWidth=1.5;GLX.beginPath();GLX.moveTo(pL,y);GLX.lineTo(pL+cW,y);GLX.stroke();GLX.restore();GLX.fillStyle=GLC2[l%GLC2.length];GLX.font="8px JetBrains Mono,monospace";GLX.textAlign="left";GLX.fillText("A_"+l,pL+cW+2,y+3);}}
+  const{group:bg}=glPh>=2?glHeavy():{group:-1};
+  sorted.forEach((p,idx)=>{const x=pL+idx*(bW+3),bh=Math.max(2,(p.d/dm)*cH),y=pT+cH-bh;let col="#d4cfc6";if(glPh>=1&&p.group>=0)col=GLC2[p.group%GLC2.length]+(p.group===bg&&glPh>=2?"":"88");if(glPh>=2&&p.group===bg)col=GLC2[p.group%GLC2.length];GLX.fillStyle=col;GLX.fillRect(x,y,bW,bh);for(let d=0;d<p.dem;d++){GLX.beginPath();GLX.arc(x+bW/2+(d-p.dem/2)*5,y-4,2.2,0,Math.PI*2);GLX.fillStyle=col;GLX.fill();}});
+  if(glPh>=2){const{group:hg,val:hv}=glHeavy(),hp=sorted.filter(p=>p.group===hg),td=hp.reduce((s,p)=>s+p.dem,0);document.getElementById("gli").textContent="Heavy group: A_"+hg+" | "+hp.length+" pairs | total dem="+td+" | dem(Aₕ)·dmax/2^{h+1}="+hv.toFixed(4)+" (≥ 1/(8 log D))";}
+}
+function glRun(){glPh=0;glDraw();let p=0;function tick(){p++;if(p>2)return;glPh=p;glDraw();if(p===1)document.getElementById("gli").textContent="Pairs grouped into dyadic buckets A_ℓ = {i | dmax/2^{ℓ+1} < dᵢ ≤ dmax/2^ℓ}. Each colour = one group.";setTimeout(tick,900);}setTimeout(tick,400);}
+function glRst(){glPh=0;glDraw();document.getElementById("gli").textContent="Click 'Animate Grouping'.";}
+function glNew(){glNewP();glPh=0;glDraw();document.getElementById("gli").textContent="New instance. Click 'Animate Grouping'.";}
+setTimeout(()=>{rzGL();glNewP();glDraw();},250);
+
+// ── BALANCED SEPARATOR CANVAS ──
+const BSC=document.getElementById("bsc"),BSX=BSC.getContext("2d");
+function rzBS(){BSC.width=BSC.clientWidth;BSC.height=330;bsDraw();}
+window.addEventListener("resize",rzBS);
+const BSP=["#1a6b6b","#c04a1a","#7a4ab8","#1a4a8b","#2e6b1a","#8b2e5a"];
+let bsN=[],bsE=[];
+function bsMk(n){bsN=[];bsE=[];const W=BSC.width||600,H=BSC.height||330;for(let i=0;i<n;i++)bsN.push({x:60+Math.random()*(W-120),y:50+Math.random()*(H-100),p:0});for(let i=1;i<n;i++){const j=Math.floor(Math.random()*i);bsE.push({u:i,v:j,sep:false});}for(let k=0;k<n;k++){const a=Math.floor(Math.random()*n),b=Math.floor(Math.random()*n);if(a!==b&&!bsE.find(e=>(e.u===a&&e.v===b)||(e.u===b&&e.v===a)))bsE.push({u:a,v:b,sep:false});}}
+function bsDraw(){if(!BSC.width){setTimeout(bsDraw,100);return;}BSX.clearRect(0,0,BSC.width,BSC.height);if(!bsN.length)return;bsE.forEach(e=>{const n1=bsN[e.u],n2=bsN[e.v];BSX.beginPath();BSX.moveTo(n1.x,n1.y);BSX.lineTo(n2.x,n2.y);BSX.strokeStyle=e.sep?"#c04a1a":"#d4cfc6";BSX.lineWidth=e.sep?3:1.1;BSX.stroke();});bsN.forEach(n=>{BSX.beginPath();BSX.arc(n.x,n.y,9,0,Math.PI*2);BSX.fillStyle=BSP[n.p%BSP.length];BSX.fill();BSX.strokeStyle="rgba(0,0,0,0.1)";BSX.lineWidth=1;BSX.stroke();});}
+function bsSep(){const mid=bsN.map(n=>n.x).sort((a,b)=>a-b)[Math.floor(bsN.length/2)];bsN.forEach(n=>{n.p=n.x<mid?0:1;});bsE.forEach(e=>{e.sep=bsN[e.u].p!==bsN[e.v].p;});const p0=bsN.filter(n=>n.p===0).length,p1=bsN.filter(n=>n.p===1).length,sc=bsE.filter(e=>e.sep).length,bal=Math.max(p0,p1)/bsN.length<=2/3;document.getElementById("bsi").textContent="Cut: "+sc+" edges | Left: "+p0+" | Right: "+p1+" | Balance: "+Math.max(p0,p1)+"/"+bsN.length+"="+((Math.max(p0,p1)/bsN.length).toFixed(2))+" "+(bal?"✓ balanced (≤ 2/3)":"✗ unbalanced");bsDraw();}
+function bsRun(){bsSep();}
+function bsRst(){bsE.forEach(e=>e.sep=false);bsN.forEach(n=>n.p=0);bsDraw();document.getElementById("bsi").textContent="Click 'Run Separator'.";}
+function bsNew(){bsMk(14);bsDraw();document.getElementById("bsi").textContent="New graph. Click 'Run Separator'.";}
+setTimeout(()=>{rzBS();bsMk(14);bsDraw();},320);
+
+// ── SIMULATION CANVAS ──
+const SC=document.getElementById("sc"),SX=SC.getContext("2d");
+function rzSC(){SC.width=SC.clientWidth;SC.height=330;if(simN.length)simDraw(null,simDir,0);}
+window.addEventListener("resize",rzSC);
+let simN=[],simE=[],simDir={dx:1,dy:0},simT=null,bestM=null,bestSp=Infinity;
+function mkSim(n){simN=[];simE=[];const W=SC.width||600,H=SC.height||330;for(let i=0;i<n;i++)simN.push({x:60+Math.random()*(W-120),y:50+Math.random()*(H-100)});for(let i=0;i<n-1;i++)simE.push({u:i,v:i+1,c:1+Math.floor(Math.random()*4)});for(let k=0;k<Math.floor(n*1.5);k++){const a=Math.floor(Math.random()*n),b=Math.floor(Math.random()*n);if(a!==b&&!simE.find(e=>(e.u===a&&e.v===b)||(e.u===b&&e.v===a)))simE.push({u:a,v:b,c:1+Math.floor(Math.random()*3)});}}
+function simSp(mask){const n=simN.length;let cap=0,dem=0;simE.forEach(e=>{if(((mask>>e.u)&1)!==((mask>>e.v)&1))cap+=e.c;});for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)if(((mask>>i)&1)!==((mask>>j)&1))dem++;return dem>0?cap/dem:Infinity;}
+function simDraw(mask,dir,sw){if(!SC.width)return;SX.clearRect(0,0,SC.width,SC.height);if(!simN.length)return;const pjs=simN.map(n=>n.x*dir.dx+n.y*dir.dy),mnP=Math.min(...pjs),mxP=Math.max(...pjs),thr=sw!==null?mnP+(mxP-mnP)*sw:null;if(thr!==null){const per={x:-dir.dy,y:dir.dx},bX=simN[0].x+dir.dx*(thr-pjs[0]),bY=simN[0].y+dir.dy*(thr-pjs[0]);SX.save();SX.setLineDash([6,4]);SX.beginPath();SX.moveTo(bX+per.x*700,bY+per.y*700);SX.lineTo(bX-per.x*700,bY-per.y*700);SX.strokeStyle="rgba(192,74,26,0.32)";SX.lineWidth=2;SX.stroke();SX.restore();}simE.forEach(e=>{const n1=simN[e.u],n2=simN[e.v],ic=mask!==null?((mask>>e.u)&1)!==((mask>>e.v)&1):thr!==null&&(pjs[e.u]<=thr)!==(pjs[e.v]<=thr);SX.beginPath();SX.moveTo(n1.x,n1.y);SX.lineTo(n2.x,n2.y);SX.strokeStyle=ic?"#c04a1a":"#d4cfc6";SX.lineWidth=ic?2.5:1;SX.stroke();});simN.forEach((n,i)=>{const inS=mask!==null?((mask>>i)&1)===1:thr!==null&&pjs[i]<=thr;SX.beginPath();SX.arc(n.x,n.y,9,0,Math.PI*2);SX.fillStyle=inS?"#c04a1a":"#fff";SX.fill();SX.strokeStyle=inS?"#8b2e0d":"#999";SX.lineWidth=1.5;SX.stroke();});}
+function newGraph(){if(simT)clearTimeout(simT);bestM=null;bestSp=Infinity;setTimeout(()=>{mkSim(9);simDir={dx:Math.cos(.5),dy:Math.sin(.5)};simDraw(null,simDir,0);document.getElementById("si").textContent="New graph. Click 'Run Sweep'.";},50);}
+function rstSim(){if(simT)clearTimeout(simT);bestM=null;bestSp=Infinity;simDraw(null,simDir,0);document.getElementById("si").textContent="Reset. Click 'Run Sweep'.";}
+function runSim(){if(simT)clearTimeout(simT);bestSp=Infinity;bestM=null;const n=simN.length,angle=Math.random()*Math.PI;simDir={dx:Math.cos(angle),dy:Math.sin(angle)};const pjs=simN.map(nd=>nd.x*simDir.dx+nd.y*simDir.dy),sorted=pjs.map((p,i)=>({p,i})).sort((a,b)=>a.p-b.p);let step=0;function tick(){if(step>=n-1){simDraw(bestM,simDir,null);document.getElementById("si").textContent="Done! Best sparsity="+(bestSp===Infinity?"∞":bestSp.toFixed(4))+". Orange=cut side S.";simT=null;return;}let mask=0;for(let j=0;j<=step;j++)mask|=(1<<sorted[j].i);const sp=simSp(mask);if(sp<bestSp&&mask!==0&&mask!==(1<<n)-1){bestSp=sp;bestM=mask;}const t=(step+.5)/(n-1);simDraw(null,simDir,t);document.getElementById("si").textContent="Sweeping… step "+(step+1)+"/"+(n-1)+" | sparsity: "+(sp===Infinity?"∞":sp.toFixed(4))+" | best: "+(bestSp===Infinity?"∞":bestSp.toFixed(4));step++;simT=setTimeout(tick,700);}tick();}
+setTimeout(()=>{rzSC();newGraph();},140);
+</script>
+</body>
+</html>
